@@ -1,0 +1,266 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Emgu.CV;
+using Emgu.CV.Structure;
+
+namespace WindowsFormsApplication2
+{
+    public partial class Form1 : Form
+    {
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+
+
+        Image<Bgr, byte> img;
+        Image<Bgr, byte> img_copy;
+        Image<Gray, byte> img_gray;
+        CascadeClassifier face_detect;
+        CascadeClassifier eye_detect;
+        
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog opf = new OpenFileDialog();
+            if(opf.ShowDialog() == DialogResult.OK)
+            {
+                img = new Image<Bgr, byte>(opf.FileName);
+                img_copy = new Image<Bgr, byte>(opf.FileName);
+                img_gray = img.Convert<Gray, byte>();
+            }
+            imageBox1.Image = img;
+        }
+
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            Image<Bgr, byte> thug = new Image<Bgr, byte>(@"C:\Users\iP\Desktop\2thag.png");
+            
+            face_detect = new CascadeClassifier(@"C:\Users\iP\Downloads\hearcasc\haarcascade_frontalface_default.xml");
+            eye_detect = new CascadeClassifier(@"C:\Users\iP\Downloads\hearcasc\haarcascade_eye.xml");
+
+
+            Rectangle[] faces = face_detect.DetectMultiScale(img_gray, 1.4, 4);
+
+
+            //for detection 
+            Image<Gray, byte> detect_skin = img_gray.Clone();
+            detect_skin.ROI = faces[0];
+
+
+
+            //for drawing results
+            Image<Bgr, byte> detect_skin2 = img.Clone();
+          //  CvInvoke.Rectangle(detect_skin2, faces[0], new MCvScalar(255, 20, 100), 3);
+            detect_skin2.ROI = faces[0];
+
+            Rectangle[] eyes = eye_detect.DetectMultiScale(detect_skin, 2.1, 6);
+
+
+            //here we make some change in rectangles around eye ( closes rectangles to eyes)
+            for (int i = 0; i < eyes.Length; i++)
+            {
+                eyes[i].Y += (int)(eyes[i].Height * 0.25);
+                eyes[i].X -= 5;
+                eyes[i].Height -= (int)(eyes[i].Height * 0.25);
+            }
+
+            // here we detect first eye and second eye and if first eye is above or down the second eye
+            // to know the angel of rotation + or -
+            int first_eye = detect_first_eye(eyes);
+            int second_eye = detect_other_eye(first_eye);
+            int above_eye = detect_above_eye(eyes, first_eye);
+
+
+            //3 important points 
+            Point p1 = new Point(eyes[first_eye].X, eyes[first_eye].Y); 
+            Point p2 = new Point(eyes[second_eye].X + eyes[second_eye].Width, eyes[second_eye].Y);
+            Point p3 = new Point(p2.X, p1.Y);
+            
+
+            // get width between pt1 and pt2 (width of th thug life glass)
+            int width = (int)Math.Sqrt(Math.Pow(p1.Y - p2.Y, 2)
+                + Math.Pow(p1.X - p2.X, 2)) + 15;
+
+
+            
+            int equ1 = (int)Math.Sqrt(Math.Pow(p2.Y - p3.Y, 2)
+                + Math.Pow(p2.X - p3.X, 2));
+
+
+            //get the angel to rotate the thug life glass
+            double l = (double)equ1 / (double)width; // we cast it to double because division int gives me zero
+
+            double a = Math.Asin(l);
+
+
+            double angel = a * 180 / Math.PI;
+
+
+            textBox1.Text = $"angel {angel}";
+            //initialize the thug life glass (rotate , resize)
+            Image<Bgr, byte> rotated_thug = thug.Rotate(angel * above_eye, new Bgr(255, 255, 255), false);
+
+
+
+            //height of the thug life glass
+            int heigh = (int)Math.Sqrt(Math.Pow(p1.Y - (p1.Y + eyes[first_eye].Height), 2)
+                + Math.Pow(p1.X - p1.X, 2));
+
+
+
+            Image<Bgr, byte> glas = new Image<Bgr, byte>(width, heigh);
+            CvInvoke.Resize(rotated_thug, glas, new Size(width, heigh));
+
+
+            
+            Rectangle re = new Rectangle(faces[0].X + p1.X, faces[0].Y + p1.Y, glas.Width, glas.Height);
+            
+
+
+
+            Image<Gray, byte> thug_mask = glas.Convert<Gray, byte>().ThresholdBinaryInv(new Gray(230), new Gray(255));
+
+            detect_skin2.ROI = re;
+            change_value(detect_skin2, glas, thug_mask);
+
+
+            //foreach (var eye in eyes)
+            //{
+            //    CvInvoke.Rectangle(detect_skin2, eye, new MCvScalar(100, 255, 0), 3);
+
+            //}
+            //CvInvoke.Line(detect_skin2, p1, p2, new MCvScalar(255, 0, 0), 3);
+            //CvInvoke.Line(detect_skin2, p1, p3, new MCvScalar(255, 0, 0), 3);
+            //CvInvoke.Line(detect_skin2, p2, p3, new MCvScalar(255, 0, 0), 3);
+
+
+            detect_skin2.ROI = Rectangle.Empty;
+            imageBox2.Image = detect_skin2;
+
+
+
+        }
+        void change_value(Image<Bgr, byte> src, Image<Bgr, byte> glass, Image<Gray, byte> mask)
+        {
+            for (int i = 0; i < src.Width; i++)
+            {
+                for (int j = 0; j < src.Height; j++)
+                {
+                    if (mask[j, i].Intensity == 255)
+                    {
+                        src[j, i] = glass[j, i];
+                    }
+                }
+            }
+            
+        }
+        int detect_other_eye(int f)
+        {
+            if (f == 0)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        int detect_first_eye(Rectangle[] eyes)
+        {
+            if (eyes[0].X < eyes[1].X)
+            {
+                return 0;
+            }
+            else
+            {
+                return 1;
+            }
+        }
+        int detect_above_eye(Rectangle[] eyes, int eye)
+        {
+            int ret = -1;
+            if (eye == 0)
+            {
+                if (eyes[eye].Y < eyes[1].Y)
+                {
+                    ret = 1;
+                }
+                else
+                {
+                    ret = -1;
+                }
+            }
+            else if (eye == 1)
+            {
+                if (eyes[eye].Y < eyes[0].Y)
+                {
+                    ret = 1;
+                }
+                else
+                {
+                    ret = -1;
+                }
+            }
+            return ret;
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            face_detect = new CascadeClassifier(@"C:\Users\iP\Downloads\hearcasc\haarcascade_frontalface_default.xml");
+            eye_detect = new CascadeClassifier(@"C:\Users\iP\Downloads\hearcasc\haarcascade_eye.xml");
+
+
+            Rectangle[] faces = face_detect.DetectMultiScale(img_gray, 1.4, 4);
+
+
+            //for detection 
+            Image<Gray, byte> detect_skin = img_gray.Clone();
+            detect_skin.ROI = faces[0];
+            
+            //for drawing results
+            Image<Bgr, byte> detect_skin2 = img.Clone();
+
+            CvInvoke.Rectangle(detect_skin2, faces[0], new MCvScalar(255, 0, 255), 3);
+            detect_skin2.ROI = faces[0];
+
+            Rectangle[] eyes = eye_detect.DetectMultiScale(detect_skin, 2.1, 6);
+            
+                
+                foreach(var eye in eyes)
+                {
+                    CvInvoke.Rectangle(detect_skin2, eye, new MCvScalar(0, 255, 255), 3);
+                }
+
+            detect_skin2.ROI = Rectangle.Empty;
+            imageBox2.Image = detect_skin2;
+
+        }
+    }
+}
