@@ -1,0 +1,76 @@
+ // params for grab cut
+            Matrix<double> bg = new Matrix<double>(1, 65);
+
+            bg.SetZero();
+
+
+
+            Matrix<double> fg = new Matrix<double>(1, 65);
+            fg.SetZero();
+
+
+
+            //the main mask
+            Image<Gray, byte> mask_rect = new Image<Gray, byte>(img.Size);
+
+            // rectangle around foreground objects
+            Rectangle rect = new Rectangle(img.Cols / 4, 0, (int)((double)img.Width / (0.75)), img.Height);
+
+
+
+            // first grab cut to get the main mask
+            CvInvoke.GrabCut(img, mask_rect, rect,
+               bg, fg, 5, Emgu.CV.CvEnum.GrabcutInitType.InitWithRect);
+
+
+            // get the edited mask that we made it in photoshop
+            Image<Gray, byte> mask2 = new Image<Gray, byte>(@"C:\Users\iP\Desktop\1grap\inna2\mask5.jpg");
+
+            ////here i set white pixels to 1 (foreground)  and black to 0 (background)
+            for (int x = 0; x < mask2.Cols; x++)
+            {
+                for (int y = 0; y < mask2.Rows; y++)
+                {
+                    if (mask2[y, x].Intensity > new Gray(200).Intensity)
+                    {
+                        mask_rect[y, x] = new Gray(1);
+                    }
+                    else if(mask2[y, x].Intensity < new Gray(50).Intensity)
+                    {
+                        mask_rect[y, x] = new Gray(0);
+                    }
+                }
+            }
+
+
+            // second grab cut with edited mask
+            CvInvoke.GrabCut(img, mask_rect, rect,
+                 bg, fg, 5, Emgu.CV.CvEnum.GrabcutInitType.InitWithMask);
+
+
+
+            // get the foreground pixels 
+            for (int x = 0; x < mask_rect.Cols; x++)
+            {
+                for (int y = 0; y < mask_rect.Rows; y++)
+                {
+                    if (mask_rect[y, x].Intensity == new Gray(1).Intensity || mask_rect[y, x].Intensity == new Gray(3).Intensity)
+                    {
+                        mask_rect[y, x] = new Gray(1);
+                    }
+                    else
+                    {
+                        mask_rect[y, x] = new Gray(0);
+                    }
+                }
+
+            }
+
+
+            // img * mask_rect
+            img = img.Mul(mask_rect.Convert<Bgr, byte>());
+
+
+
+
+            CvInvoke.Imshow("result", img);
