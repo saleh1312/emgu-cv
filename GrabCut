@@ -1,0 +1,148 @@
+  Image<Bgr, byte> img;
+        Image<Gray, byte> mask_rect;
+
+
+        Matrix<double> fg;
+        Matrix<double> bg;
+
+
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog opf = new OpenFileDialog();
+            if(opf.ShowDialog() == DialogResult.OK)
+            {
+                img = new Image<Bgr, byte>(opf.FileName);
+                mask_rect = new Image<Gray, byte>(img.Size);
+            }
+
+
+           bg = new Matrix<double>(1, 65);
+
+            bg.SetZero();
+
+
+
+            fg = new Matrix<double>(1, 65);
+            fg.SetZero();
+
+            imageBox1.Image = img;
+
+          
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            // making rectangle around foreground objects
+         //   Rectangle rect = new Rectangle((img.Cols / 4) - 50, 0, 400, img.Height);
+
+
+            Rectangle rect = new Rectangle((img.Cols / 4) - 50, 0, 900, img.Height);
+            Image<Bgr, byte> copy = img.Clone();
+            copy.Draw(rect, new Bgr(255, 0, 0), 2);
+            CvInvoke.Imshow("copy", copy);
+
+
+
+            // grab cut with rectangle
+            CvInvoke.GrabCut(img, mask_rect, rect,
+               bg, fg, 5, Emgu.CV.CvEnum.GrabcutInitType.InitWithRect);
+
+
+            // copy of main mask
+            Image<Gray, byte> mask = mask_rect.Clone();
+
+            //getting the foregrond pixels 
+            for (int x = 0; x < mask.Cols; x++)
+            {
+                for (int y = 0; y < mask.Rows; y++)
+                {
+                    if (mask[y, x].Intensity == new Gray(1).Intensity || mask[y, x].Intensity == new Gray(3).Intensity)
+                    {
+                        mask[y, x] = new Gray(1);
+                    }
+                    else
+                    {
+                        mask[y, x] = new Gray(0);
+                    }
+                }
+
+            }
+
+
+            // img * mask
+            Image<Bgr, byte> show = img.Clone();
+            show = show.Mul(mask.Convert<Bgr, byte>());
+
+
+
+
+            CvInvoke.Imshow("result", show);
+
+
+        }
+
+
+        Image<Gray, byte> mask_edit;
+        private void button3_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog opf = new OpenFileDialog();
+            if (opf.ShowDialog() == DialogResult.OK)
+            {
+                mask_edit = new Image<Gray, byte>(opf.FileName);
+            }
+            CvInvoke.Imshow("mask", mask_edit);
+        }
+
+
+
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            Image<Gray, byte> mask = mask_rect.Clone();
+
+            // modify main mask 
+            for (int x = 0; x < mask_edit.Cols; x++)
+            {
+                for (int y = 0; y < mask_edit.Rows; y++)
+                {
+                    if (mask_edit[y, x].Intensity > new Gray(200).Intensity)
+                    {
+                        mask[y, x] = new Gray(1);
+                    }
+                    else if(mask_edit[y, x].Intensity < new Gray(50).Intensity)
+                    {
+                        mask[y, x] = new Gray(0);
+                    }
+                }
+            }
+
+            
+            CvInvoke.GrabCut(img, mask, Rectangle.Empty,
+                bg, fg, 5, Emgu.CV.CvEnum.GrabcutInitType.InitWithMask);
+
+
+
+            for (int x = 0; x < mask.Cols; x++)
+            {
+                for (int y = 0; y < mask.Rows; y++)
+                {
+                    if (mask[y, x].Intensity == new Gray(1).Intensity || mask[y, x].Intensity == new Gray(3).Intensity)
+                    {
+                        mask[y, x] = new Gray(1);
+                    }
+                    else
+                    {
+                        mask[y, x] = new Gray(0);
+                    }
+                }
+
+            }
+
+            Image<Bgr,byte> show = img.Mul(mask.Convert<Bgr, byte>());
+
+
+
+
+            CvInvoke.Imshow("result", show);
+        }
