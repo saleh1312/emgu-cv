@@ -1,0 +1,100 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Emgu.CV;
+using Emgu.CV.Structure;
+using System.Drawing;
+using Emgu.CV.Util;
+
+namespace facesblur
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            Image<Bgr, byte> img ;
+            Image<Gray, byte> gray ;
+            Mat frame = new Mat();
+
+            VideoCapture cap = new VideoCapture(@"C:\Users\iP\Desktop\coca\mod\La casa de papel - Bella Ciao.mp4");
+            Rectangle[] faces; // all faces that detected
+            Rectangle face; // biggest face (sometimes programe get false faces so we choose the biggest)
+
+
+            // the trainig file for detecting faces ( download it from youtube )
+            CascadeClassifier faceDetector = new CascadeClassifier(@"C:\Users\iP\Downloads\hearcasc\haarcascade_frontalface_default.xml");
+
+
+
+            int count = 0; // to escape 10 frames
+            while(true)
+            {
+
+                cap.Read(frame);
+                if((count /1) == 1) // if we escaped 10 frames ( you can use any number )
+                {
+                    img = frame.ToImage<Bgr, byte>();
+
+                    img._GammaCorrect(0.5); // increase brightness of the frame
+
+                    gray = img.Convert<Gray, byte>();
+
+                    faces = faceDetector.DetectMultiScale(gray);
+
+
+                    // index of biggest face
+                    int x = 0;
+
+                    // are there any faces ??
+                    if (faces.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    // select the biggest
+                    for (int i = 0; i < faces.Length; i++)
+                    {
+                        if ((faces[i].Size.Width > faces[x].Size.Width) && (faces[i].Size.Height > faces[x].Size.Height))
+                        {
+                            x = i;
+                        }
+                    }
+                    face = faces[x];
+
+
+                    // set ROI of the frame to our face
+                    img.ROI = face;
+
+
+                    // blur the face 10 times with 29*29 kernal size
+                    for (int i = 0; i < 10; i++)
+                    {
+                        CvInvoke.Blur(img, img, new Size(29, 29), new Point(-1, -1));
+                    }
+
+                    // delete the Roi
+                    img.ROI = Rectangle.Empty;
+                    CvInvoke.Imshow("img", img);
+
+                    
+                    count = 0;
+                }else
+                {
+                    count++;
+                }
+               
+
+                if(CvInvoke.WaitKey(1) == 27)
+                {
+                    break;
+                }
+            }
+
+            CvInvoke.DestroyAllWindows();
+            cap.Dispose();
+            
+        }
+    }
+}
