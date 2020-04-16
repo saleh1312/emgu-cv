@@ -1,0 +1,312 @@
+using Emgu.CV;
+using Emgu.CV.Structure;
+using Emgu.CV.Util;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+
+namespace ConsoleApplication5
+{
+    class Program
+    {
+      
+        static VideoCapture cap = new VideoCapture(@"green ball.mp4");
+        
+
+        class objects_class
+        {
+            public int id;
+            public Rectangle area;
+            public List<Point> points;
+            public string direction;
+            public  bool removed = false;
+
+            public void calc_dirc()
+            {
+                if(removed == true)
+                {
+                    direction = "Removed";
+                    return;
+                }
+                int dx = 0;
+                int dy = 0;
+               
+
+
+               this.direction = "";
+
+              // maybe it is new object and doesnt have at leaset 10 points so 
+              // we put this step in try - catch
+
+              if (this.points.Count < 10)
+              {
+                        return ;
+              }
+
+              dx = this.points[this.points.Count - 1].X - this.points[this.points.Count - 10].X;
+              dy = this.points[this.points.Count - 1].Y -this.points[this.points.Count - 10].Y;
+
+             if (Math.Abs(dx) >= 10)
+             {
+                  if (Math.Sign(dx) == 1)
+                    {
+                            this.direction += " east ";
+                    }
+                    else
+                   {
+                           this.direction += " west ";
+                   }
+
+                    }
+            if (Math.Abs(dy) >= 10)
+             {
+                  if (Math.Sign(dy) == 1)
+                  {
+                     this.direction += " south ";
+                 }
+                   else
+                   {
+                            this.direction += " north ";
+                    }
+
+                 }
+            }
+            
+        }
+        static void Main(string[] args)
+        {
+            Mat frame = new Mat();
+            Image<Bgr, byte> img;
+            Image<Gray, byte> filter;
+            Image<Hsv, byte> hsv;
+          
+            VectorOfVectorOfPoint cont = new VectorOfVectorOfPoint(); //contours after segmenting
+
+            VectorOfVectorOfPoint contors = new VectorOfVectorOfPoint(); // contours
+
+            
+            List<int> objectsd = new List<int>();// objects to draw (objects that is still remainig in video ) 
+
+            
+
+
+            List<objects_class> objects = new List<objects_class>();
+
+
+
+
+            //to show the directions of the objects
+            // you can use another table or text box 
+            Image<Gray, byte> directions = new Image<Gray, byte>(500,500);
+
+           
+            while (true)
+            {
+                cap.Read(frame);
+
+                if(frame.IsEmpty)
+                {
+                    break;
+                }
+                
+                img = frame.ToImage<Bgr, byte>();
+
+                // segmenting (extract the objects from image)
+                hsv = img.Convert<Hsv, byte>();
+
+                filter = hsv.InRange(new Hsv((200 / 2), 0, 0), new Hsv((255 / 2), 255, 255));
+                filter._Not();
+                filter._Dilate(1);
+                filter._SmoothGaussian(5);
+                CvInvoke.FindContours(filter, contors, null, Emgu.CV.CvEnum.RetrType.List, Emgu.CV.CvEnum.ChainApproxMethod.ChainApproxSimple);
+
+                
+
+                // extract biggest contours
+                for (int i = 0; i < contors.Size; i++)
+                {
+                    Rectangle rec = CvInvoke.BoundingRectangle(contors[i]);
+                    if ((rec.Width > 100) && (rec.Height > rec.Width / 2))
+                    {
+                        cont.Push(contors[i]);
+                    }
+                }
+
+                if (!(cont.Size < 1))
+                {
+                    for (int i = 0; i < cont.Size; i++)
+                    {
+
+                        Moments m = CvInvoke.Moments(cont[i], true);
+                        Rectangle rect = CvInvoke.BoundingRectangle(cont[i]);
+                        int x = (int)(m.M10 / m.M00);
+                        int y = (int)(m.M01 / m.M00);
+
+                        Point center = new Point(x, y);
+
+                        bool exits = false;
+                        for (int o = 0; o < objects.Count; o++)
+                        {
+                           
+                            //if center of contour is match with another object area in objects
+                            if (objects[o].area.Contains(center) == true)
+                            {
+
+
+                                // we add the new point to the object points
+                                objects[o].points.Add(center);
+
+                                // we update the object area
+                                objects[o].area = rect;
+
+
+
+                                // add to the objects to draw 
+                                objectsd.Add(objects[o].id);
+
+
+
+                                exits = true;
+                                break;
+                            }
+
+
+                        }
+
+                        //if there are new contour , we add it as object
+                        if (exits == false)
+                        {
+
+                            int yii = 0;
+
+                            // if there are no objects so there are no keys so throw exception here
+                            
+                            if(objects.Count >0)
+                            {
+                                yii = objects.Max(idee => idee.id);// get last id of objects
+                            }
+                            
+                            
+
+
+                            yii = ++yii;
+
+
+                            objects_class obj = new objects_class();
+                            obj.id = yii;
+                            obj.area = rect;
+                            obj.points = new List<Point>();
+                            obj.direction = "";
+
+                            objects.Add(obj);
+
+                            objectsd.Add(obj.id);
+                        }
+
+
+                    }
+
+
+
+
+
+
+
+                    // draw_contours
+                    for (int i = 0; i < objects.Count; i++)
+                    {
+                        if(objects[i].area != Rectangle.Empty)
+                        {
+                            CvInvoke.PutText(img, objects[i].id.ToString(), new Point(objects[i].area.X
+                            , objects[i].area.Y), Emgu.CV.CvEnum.FontFace.HersheyDuplex, 0.9, new MCvScalar(0, 0, 0), 2);
+                        }
+                        
+
+                    }
+
+                    
+                    directions.SetValue(new Gray(0));
+
+                    //show directions in another image
+                    int masf = 30;
+                    for (int i = 0; i < objects.Count; i++)
+                    {
+                        objects[i].calc_dirc();
+                        CvInvoke.PutText(directions, objects[i].id + " : " + objects[i].direction, new Point(30, masf), Emgu.CV.CvEnum.FontFace.HersheyComplex, 0.9
+                            , new MCvScalar(255));
+                        masf += 30;
+
+
+
+                    }
+
+
+
+                    
+                    // if there are object not in objectsd that is mean it is removed
+                    
+                    for (int i = 0; i < objects.Count; i++)
+                    {
+                        bool exits = false;
+                        for (int k = 0; k < objectsd.Count; k++)
+                        {
+                            if (objects[i].id == objectsd[k])
+                            {
+                                exits = true;
+                                objects[i].removed = false;
+                            }
+                        }
+                       
+                        if (exits == false )
+                        {
+                            objects[i].area = Rectangle.Empty;
+                            objects[i].removed = true;
+                            
+                        }
+                    }
+
+                    objectsd.Clear();
+                    cont.Clear();
+
+
+
+                }else
+                {
+                    //if there are no objects and all removed 
+                    for(int i=0;i<objects.Count;i++)
+                    {
+                        objects[i].removed = true;
+                    }
+
+                    int masf = 30;
+                    for (int i = 0; i < objects.Count; i++)
+                    {
+                        objects[i].calc_dirc();
+                        CvInvoke.PutText(directions, objects[i].id + " : " + objects[i].direction, new Point(30, masf), Emgu.CV.CvEnum.FontFace.HersheyComplex, 0.9
+                            , new MCvScalar(255));
+                        masf += 30;
+
+
+
+                    }
+
+                }
+
+
+                CvInvoke.Imshow("img", img);
+
+                CvInvoke.Imshow("filter", filter);
+                CvInvoke.Imshow("directions", directions);
+
+
+                if (CvInvoke.WaitKey(1) == 27)
+                {
+                    break;
+                }
+            }
+            CvInvoke.DestroyAllWindows();
+            cap.Dispose();
+        }
+    }
+}
