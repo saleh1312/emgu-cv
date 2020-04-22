@@ -1,0 +1,115 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Emgu.CV;
+using Emgu.CV.Structure;
+using Emgu.CV.Util;
+using System.Drawing;
+
+namespace ConsoleApplication8
+{
+
+
+    class Program
+    {
+        static List<Point> points = new List<Point>();
+        static List<Point> visited = new List<Point>();
+        static List<List<Point>> clust = new List<List<Point>>();
+
+
+        static void dbscan(Point pt,int clus , int eps)
+        {
+            
+
+            Rectangle rect = new Rectangle(pt.X - eps , pt.Y - eps , eps*2, eps*2);
+            visited.Add(pt);
+
+            for(int i =0;i<points.Count;i++)
+            {
+                if(rect.Contains(points[i]) == true && !(visited.Any((p)=> { return (p.X == points[i].X && p.Y == points[i].Y); })))
+                {
+                    clust[clus].Add(points[i]);
+                    dbscan(points[i],clus,eps);
+                }
+            }
+
+
+        }
+
+        static void Main(string[] args)
+        {
+            
+
+
+            VectorOfVectorOfPoint cont = new VectorOfVectorOfPoint();
+
+            Image<Bgr, byte> img = new Image<Bgr, byte>(@"D:\nnnn\t3.bmp");
+
+            Image<Gray,byte> gray =   img.Convert<Gray,byte>().ThresholdBinary(new Gray(240), new Gray(255));
+
+            CvInvoke.FindContours(gray, cont, null, Emgu.CV.CvEnum.RetrType.External, Emgu.CV.CvEnum.ChainApproxMethod.ChainApproxSimple);
+         
+            
+            //extract center points from contours
+            for (int o = 0; o < cont.Size; o++)
+            {
+                Moments m = CvInvoke.Moments(cont[o]);
+                int x = (int)(m.M10 / m.M00);
+                int y = (int)(m.M01 / m.M00);
+                points.Add(new Point(x, y));
+            }
+
+
+            // we loop on all points if point is not in visited points we call dbscan for it
+            for(int i=0;i<points.Count;i++)
+            {
+                if(!(visited.Any((p) => { return (p.Y == points[i].Y && p.Y == points[i].Y); })))
+                {
+                    // add new clust
+                    clust.Add(new List<Point>());
+                    int index = clust.Count - 1;
+
+                    // add this point to the clust
+                    clust[index].Add(points[i]);
+
+                    // call dbscan with the point and index of his clust
+                    dbscan(points[i],index,100);
+                }
+            }
+
+
+            // get the convex hull of clusters
+            VectorOfVectorOfPoint convex = new VectorOfVectorOfPoint();
+
+            
+            // here we filter the clusters from noise ( if cluster size > (i) we take it )
+            for (int i=0;i<clust.Count;i++)
+            {
+                if(clust[i].Count > 2)
+                {
+                    convex.Push(new VectorOfPoint());
+
+                    CvInvoke.ConvexHull(new VectorOfPoint(clust[i].ToArray()), convex[convex.Size -1],true);
+                }
+                
+            }
+            
+
+         
+                CvInvoke.DrawContours(img, convex, -1, new MCvScalar(255,0,255), 3);
+                
+           
+          //  CvInvoke.Circle(img, convex[4][3], 55, new MCvScalar(0, 0, 255), 5);
+            
+           
+            CvInvoke.Imshow("img",img);
+
+
+           
+
+            CvInvoke.WaitKey(0);
+        }
+    }
+}
