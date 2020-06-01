@@ -1,0 +1,194 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Emgu.CV;
+
+using Emgu.CV.Util;
+using System.Drawing;
+using Emgu.CV.Structure;
+
+namespace ConsoleApplication13
+{
+    class Program
+    {
+      
+        static Image<Gray,float> calc_wnr_filter(Image<Gray, float> h,double nsr)
+        {
+            Image<Gray, float> h_shifted = shift(h);
+            
+            VectorOfMat planes = new VectorOfMat();
+            Mat io = h_shifted.Clone().Mat;
+
+
+            planes.Push(io);
+
+            planes.Push(Mat.Zeros(io.Rows, io.Cols, io.Depth, io.NumberOfChannels));
+
+
+            Mat coplex = new Mat(io.Rows, io.Cols, io.Depth, io.NumberOfChannels);
+
+            CvInvoke.Merge(planes, coplex);
+
+            CvInvoke.Dft(coplex, coplex, Emgu.CV.CvEnum.DxtType.Forward, 0);
+            CvInvoke.Split(coplex, planes);
+
+            Mat denom = new Mat();
+            Mat abs = new Mat();
+            Mat power = new Mat();
+          
+            power = planes[0] * 2;
+            
+
+            CvInvoke.AbsDiff(planes[0], power, abs);
+           
+            CvInvoke.Pow(abs, 2, denom);
+
+            denom += nsr;
+
+            Image<Gray, float> res1 = planes[0].ToImage<Gray, float>();
+            Image<Gray, float> res2 = denom.ToImage<Gray, float>();
+            Image<Gray, float> res = res1.Clone();
+
+            for (int x = 0; x < res1.Cols; x++)
+            {
+                for (int y = 0; y < res1.Rows; y++)
+                {
+                    res[y, x] =new Gray( (float)(res1[y,x].Intensity / res2[y,x].Intensity));
+                 
+                }
+            }
+
+            return res;
+
+        }
+
+        static Mat freq(Image<Gray,byte> img , Image<Gray,float> h)
+        {
+            Image<Gray, float> padded_f;
+            
+
+            padded_f = img.Convert<Gray, float>();
+
+            VectorOfMat planes = new VectorOfMat();
+            Mat io = padded_f.Clone().Mat;
+
+
+            planes.Push(io);
+
+            planes.Push(Mat.Zeros(io.Rows, io.Cols, io.Depth, io.NumberOfChannels));
+
+            Mat coplex = new Mat(io.Rows, io.Cols, io.Depth, io.NumberOfChannels);
+
+            CvInvoke.Merge(planes, coplex);
+
+            CvInvoke.Dft(coplex, coplex, Emgu.CV.CvEnum.DxtType.Scale, 0);
+
+
+
+            VectorOfMat planes2 = new VectorOfMat();
+            Mat io2 = h.Clone().Mat;
+
+
+            planes2.Push(io2);
+
+            planes2.Push(Mat.Zeros(io2.Rows, io2.Cols, io2.Depth, io2.NumberOfChannels));
+
+            Mat coplex2 = new Mat(io2.Rows, io2.Cols, io2.Depth, io2.NumberOfChannels);
+
+            CvInvoke.Merge(planes2, coplex2);
+
+
+            Mat spec = new Mat();
+            CvInvoke.MulSpectrums(coplex, coplex2, spec,Emgu.CV.CvEnum.MulSpectrumsType.Default);
+
+            CvInvoke.Dft(spec, spec, Emgu.CV.CvEnum.DxtType.Inverse, 0);
+            CvInvoke.Split(spec, planes2);
+
+
+            return planes2[0];
+
+        }
+     
+        static Image<Gray,float> calc_psf(Size size , int r)
+        {
+            Image<Gray, float> h = new Image<Gray, float>(size);
+            h.SetZero();
+            Point p = new Point((h.Width / 2), (h.Height / 2));
+            CvInvoke.Circle(h, p, r, new MCvScalar(255),-1);
+
+            
+            MCvScalar mcv = CvInvoke.Sum(h);
+            Image<Gray, float> output = h / mcv.ToArray()[0];
+
+           
+            return output.Convert<Gray,float>();
+           
+        }
+     
+        static Image<Gray,float> shift(Image<Gray,float> img)
+        {
+            Mat m = img.Clone().Mat;
+
+            int cx = m.Cols / 2;
+            int cy = m.Rows / 2;
+
+            Mat q0 = new Mat(m, new Rectangle(0, 0, cx, cy));
+            Mat q1 = new Mat(m, new Rectangle(cx, 0, cx, cy));
+            Mat q2 = new Mat(m, new Rectangle(0, cy, cx, cy));
+            Mat q3 = new Mat(m, new Rectangle(cx, cy, cx, cy));
+            Mat temp=new Mat();
+
+            q0.CopyTo(temp);
+            q3.CopyTo(q0);
+            temp.CopyTo(q3);
+
+            q1.CopyTo(temp);
+            q2.CopyTo(q1);
+            temp.CopyTo(q2);
+
+            return m.ToImage<Gray, float>();
+           
+        }
+
+        static void Main(string[] args)
+        {
+
+            //lo.ong 19,19    11 ,    0.00099
+            //book1.jpg 31,31   17 ,  0.0005
+            Image<Bgr, byte> img = new Image<Bgr, byte>(@"book1.jpg").SmoothBlur(31,31);
+
+
+            //blured  image
+            Image<Gray, byte> gray = img.Convert<Gray, byte>();
+
+
+            Rectangle roi = new Rectangle(0, 0, gray.Cols & -2, gray.Rows & -2);
+            
+            //calc psf
+            Image<Gray,float> h=   calc_psf(roi.Size,17);
+
+            //calc winier filter
+            Image<Gray,float> hw=    calc_wnr_filter(h, 0.0005);
+
+            //get image only
+            gray.ROI = new Rectangle(0, 0, gray.Cols & -2, gray.Rows & -2);
+            
+            Image<Gray, byte> img_to_process = gray.Copy();
+            gray.ROI = Rectangle.Empty;
+            Mat res= freq(img_to_process, hw);
+
+            Mat k = new Mat();
+            res.ConvertTo(k, Emgu.CV.CvEnum.DepthType.Cv8U);
+            CvInvoke.Normalize(k, k, 0, 255, Emgu.CV.CvEnum.NormType.MinMax);
+
+
+
+            
+            CvInvoke.Imshow("deblur",k.ToImage<Gray,byte>() );
+            CvInvoke.Imshow("img", gray);
+            CvInvoke.WaitKey(0);
+        }
+    }
+}
